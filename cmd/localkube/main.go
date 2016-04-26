@@ -68,7 +68,7 @@ func main() {
 
 	// if first
 	load()
-	err := LK.Run(os.Args, os.Stderr)
+	err := LK.Run(os.Stderr)
 	if err != nil {
 		fmt.Printf("localkube errored: %v\n", err)
 		os.Exit(1)

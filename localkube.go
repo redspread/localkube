@@ -2,6 +2,7 @@ package localkube
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 )
@@ -15,20 +16,28 @@ func (lk *LocalKube) Add(server Server) {
 	lk.Servers = append(lk.Servers, server)
 }
 
-func (lk *LocalKube) Run(args []string, out io.Writer) error {
-	if len(args) < 2 {
+var containerized = flag.Bool("containerized", true, "Whether localkube is inside a container or not")
+
+func init() {
+	flag.Parse()
+}
+
+func (lk *LocalKube) Run(out io.Writer) error {
+	if len(flag.Args()) < 1 {
 		return errors.New("you must choose start <name>, stop <name>, or status")
 	}
 
-	switch args[1] {
+	args := flag.Args()
+	fmt.Fprintln(out, "Got args: %s", args)
+	switch args[0] {
 	case "start":
 		// check if just start
-		if len(args) == 2 {
+		if len(args) == 1 {
 			fmt.Fprintln(out, "Starting LocalKube...")
 			lk.StartAll()
 			return nil
-		} else if len(args) == 3 {
-			serverName := args[2]
+		} else if len(args) == 2 {
+			serverName := args[1]
 			fmt.Fprintf(out, "Starting `%s`...\n", serverName)
 			return lk.Start(serverName)
 
@@ -37,12 +46,12 @@ func (lk *LocalKube) Run(args []string, out io.Writer) error {
 		}
 	case "stop":
 		// check if just stop
-		if len(args) == 2 {
+		if len(args) == 1 {
 			fmt.Fprintln(out, "Stopping LocalKube...")
 			lk.StopAll()
 			return nil
-		} else if len(args) == 3 {
-			serverName := args[2]
+		} else if len(args) == 2 {
+			serverName := args[1]
 			fmt.Fprintf(out, "Stopping `%s`...\n", serverName)
 			return lk.Stop(serverName)
 		}

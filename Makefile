@@ -51,10 +51,18 @@ integration: build-image
 .PHONY: build
 build: build/localkube-$(GOOS)
 
+.PHONY: build-dynamic
+build-dynamic: build/localkube-dynamic-$(GOOS)
+
 .PHONY: docker-build
 docker-build: validate
 	mkdir build
 	$(DOCKER) run -w $(DOCKER_DIR) $(DOCKER_OPTS) $(MNT_REPO) $(DOCKER_DEV_IMAGE) make build
+
+.PHONY: docker-build-dynamic
+docker-build-dynamic: validate
+	mkdir build
+	$(DOCKER) run -w $(DOCKER_DIR) $(DOCKER_OPTS) $(MNT_REPO) $(DOCKER_DEV_IMAGE) make build-dynamic
 
 .PHONY: clean
 clean:
@@ -62,6 +70,9 @@ clean:
 
 build/localkube-$(GOOS):
 	$(GO) build -o $@ $(GOBUILD_FLAGS) $(GOBUILD_LDFLAGS) $(EXEC_PKG)
+
+build/localkube-dynamic-$(GOOS):
+	CGO_ENABLED=1 $(GO) build -o $@ $(EXEC_PKG)
 
 .PHONY: build-image
 build-image: context

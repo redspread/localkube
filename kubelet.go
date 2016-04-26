@@ -35,7 +35,7 @@ func StartKubeletServer(clusterDomain, clusterDNS string) func() {
 	config.APIServerList = []string{APIServerURL}
 
 	// Docker
-	config.Containerized = true
+	config.Containerized = *containerized
 	config.DockerEndpoint = WeaveProxySock
 
 	// Networking
