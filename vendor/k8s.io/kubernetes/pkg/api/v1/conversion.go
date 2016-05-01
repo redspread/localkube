@@ -236,7 +236,7 @@ func Convert_v1_ReplicationControllerSpec_To_api_ReplicationControllerSpec(in *R
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*ReplicationControllerSpec))(in)
 	}
-	out.Replicas = int(*in.Replicas)
+	out.Replicas = *in.Replicas
 	if in.Selector != nil {
 		out.Selector = make(map[string]string)
 		for key, val := range in.Selector {
@@ -338,6 +338,8 @@ func Convert_api_PodSpec_To_v1_PodSpec(in *api.PodSpec, out *PodSpec, s conversi
 	} else {
 		out.ImagePullSecrets = nil
 	}
+	out.Hostname = in.Hostname
+	out.Subdomain = in.Subdomain
 	return nil
 }
 
@@ -419,7 +421,8 @@ func Convert_v1_PodSpec_To_api_PodSpec(in *PodSpec, out *api.PodSpec, s conversi
 	} else {
 		out.ImagePullSecrets = nil
 	}
-
+	out.Hostname = in.Hostname
+	out.Subdomain = in.Subdomain
 	return nil
 }
 

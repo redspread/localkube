@@ -95,7 +95,7 @@ func NewConverter(nameFn NameFunc) *Converter {
 		inputFieldMappingFuncs: make(map[reflect.Type]FieldMappingFunc),
 		inputDefaultFlags:      make(map[reflect.Type]FieldMatchingFlags),
 	}
-	c.RegisterConversionFunc(ByteSliceCopy)
+	c.RegisterConversionFunc(Convert_Slice_byte_To_Slice_byte)
 	return c
 }
 
@@ -114,8 +114,12 @@ func (c *Converter) DefaultMeta(t reflect.Type) (FieldMatchingFlags, *Meta) {
 	}
 }
 
-// ByteSliceCopy prevents recursing into every byte
-func ByteSliceCopy(in *[]byte, out *[]byte, s Scope) error {
+// Convert_Slice_byte_To_Slice_byte prevents recursing into every byte
+func Convert_Slice_byte_To_Slice_byte(in *[]byte, out *[]byte, s Scope) error {
+	if *in == nil {
+		*out = nil
+		return nil
+	}
 	*out = make([]byte, len(*in))
 	copy(*out, *in)
 	return nil

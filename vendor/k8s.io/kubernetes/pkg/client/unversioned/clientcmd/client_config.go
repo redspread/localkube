@@ -99,6 +99,9 @@ func (config *DirectClientConfig) ClientConfig() (*restclient.Config, error) {
 		u.Fragment = ""
 		clientConfig.Host = u.String()
 	}
+	if len(configAuthInfo.Impersonate) > 0 {
+		clientConfig.Impersonate = configAuthInfo.Impersonate
+	}
 
 	// only try to read the auth information if we are secure
 	if restclient.IsConfigTransportTLS(*clientConfig) {
@@ -156,6 +159,9 @@ func getUserIdentificationPartialConfig(configAuthInfo clientcmdapi.AuthInfo, fa
 	if len(configAuthInfo.Token) > 0 {
 		mergedConfig.BearerToken = configAuthInfo.Token
 	}
+	if len(configAuthInfo.Impersonate) > 0 {
+		mergedConfig.Impersonate = configAuthInfo.Impersonate
+	}
 	if len(configAuthInfo.ClientCertificate) > 0 || len(configAuthInfo.ClientCertificateData) > 0 {
 		mergedConfig.CertFile = configAuthInfo.ClientCertificate
 		mergedConfig.CertData = configAuthInfo.ClientCertificateData
@@ -165,6 +171,9 @@ func getUserIdentificationPartialConfig(configAuthInfo clientcmdapi.AuthInfo, fa
 	if len(configAuthInfo.Username) > 0 || len(configAuthInfo.Password) > 0 {
 		mergedConfig.Username = configAuthInfo.Username
 		mergedConfig.Password = configAuthInfo.Password
+	}
+	if configAuthInfo.AuthProvider != nil {
+		mergedConfig.AuthProvider = configAuthInfo.AuthProvider
 	}
 
 	// if there still isn't enough information to authenticate the user, try prompting
@@ -206,8 +215,8 @@ func makeServerIdentificationConfig(info clientauth.Info) restclient.Config {
 func canIdentifyUser(config restclient.Config) bool {
 	return len(config.Username) > 0 ||
 		(len(config.CertFile) > 0 || len(config.CertData) > 0) ||
-		len(config.BearerToken) > 0
-
+		len(config.BearerToken) > 0 ||
+		config.AuthProvider != nil
 }
 
 // Namespace implements KubeConfig
@@ -305,6 +314,14 @@ func (config *DirectClientConfig) getCluster() clientcmdapi.Cluster {
 		mergo.Merge(&mergedClusterInfo, configClusterInfo)
 	}
 	mergo.Merge(&mergedClusterInfo, config.overrides.ClusterInfo)
+	// An override of --insecure-skip-tls-verify=true and no accompanying CA/CA data should clear already-set CA/CA data
+	// otherwise, a kubeconfig containing a CA reference would return an error that "CA and insecure-skip-tls-verify couldn't both be set"
+	caLen := len(config.overrides.ClusterInfo.CertificateAuthority)
+	caDataLen := len(config.overrides.ClusterInfo.CertificateAuthorityData)
+	if config.overrides.ClusterInfo.InsecureSkipTLSVerify && caLen == 0 && caDataLen == 0 {
+		mergedClusterInfo.CertificateAuthority = ""
+		mergedClusterInfo.CertificateAuthorityData = nil
+	}
 
 	return mergedClusterInfo
 }

@@ -1,0 +1,60 @@
+package: rsprd.com/localkube
+import:
+- package: github.com/codegangsta/cli
+- package: github.com/coreos/etcd
+  subpackages:
+  - etcdserver
+  - etcdserver/etcdhttp
+  - pkg/transport
+  - pkg/types
+  - mvcc
+- package: github.com/coreos/go-etcd
+  subpackages:
+  - etcd
+- package: github.com/docker/docker
+  subpackages:
+  - pkg/jsonmessage
+  - pkg/term
+- package: github.com/fsouza/go-dockerclient
+- package: github.com/golang/glog
+- package: github.com/mitchellh/go-homedir
+- package: github.com/skynetservices/skydns
+  version: 39036923480f35acc79db5cc5bd208c93ce3fbd3
+  subpackages:
+  - backends/etcd
+  - msg
+  - server
+- package: github.com/spf13/pflag
+- package: k8s.io/kubernetes
+  version: master
+  subpackages:
+  - cmd/kube-apiserver/app
+  - cmd/kube-apiserver/app/options
+  - cmd/kube-controller-manager/app
+  - cmd/kube-controller-manager/app/options
+  - cmd/kube-proxy/app
+  - cmd/kube-proxy/app/options
+  - cmd/kubelet/app
+  - cmd/kubelet/app/options
+  - pkg/api
+  - pkg/api/endpoints
+  - pkg/api/unversioned
+  - pkg/apis/componentconfig
+  - pkg/client/cache
+  - pkg/client/restclient
+  - pkg/client/unversioned
+  - pkg/client/unversioned/clientcmd
+  - pkg/client/unversioned/clientcmd/api
+  - pkg/controller/framework
+  - pkg/fields
+  - pkg/kubectl/cmd/config
+  - pkg/kubelet/qos
+  - pkg/storage/etcd
+  - pkg/storage/etcd/util
+  - pkg/util/intstr
+  - pkg/util/validation
+  - pkg/util/wait
+  - plugin/cmd/kube-scheduler/app
+  - plugin/cmd/kube-scheduler/app/options
+- package: github.com/miekg/dns
+  version: f8964231a81dcbe9fc5f13a228c7f10a933acc50

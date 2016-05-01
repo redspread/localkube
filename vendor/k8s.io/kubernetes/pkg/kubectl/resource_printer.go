@@ -35,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -255,6 +257,12 @@ type JSONPrinter struct {
 
 // PrintObj is an implementation of ResourcePrinter.PrintObj which simply writes the object to the Writer.
 func (p *JSONPrinter) PrintObj(obj runtime.Object, w io.Writer) error {
+	switch obj := obj.(type) {
+	case *runtime.Unknown:
+		_, err := w.Write(obj.Raw)
+		return err
+	}
+
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return err
@@ -281,6 +289,16 @@ type YAMLPrinter struct {
 
 // PrintObj prints the data as YAML.
 func (p *YAMLPrinter) PrintObj(obj runtime.Object, w io.Writer) error {
+	switch obj := obj.(type) {
+	case *runtime.Unknown:
+		data, err := yaml.JSONToYAML(obj.Raw)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(data)
+		return err
+	}
+
 	output, err := yaml.Marshal(obj)
 	if err != nil {
 		return err
@@ -401,6 +419,7 @@ var replicaSetColumns = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
 var jobColumns = []string{"NAME", "DESIRED", "SUCCESSFUL", "AGE"}
 var serviceColumns = []string{"NAME", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}
 var ingressColumns = []string{"NAME", "RULE", "BACKEND", "ADDRESS", "AGE"}
+var petSetColumns = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
 var endpointColumns = []string{"NAME", "ENDPOINTS", "AGE"}
 var nodeColumns = []string{"NAME", "STATUS", "AGE"}
 var daemonSetColumns = []string{"NAME", "DESIRED", "CURRENT", "NODE-SELECTOR", "AGE"}
@@ -414,6 +433,9 @@ var persistentVolumeColumns = []string{"NAME", "CAPACITY", "ACCESSMODES", "STATU
 var persistentVolumeClaimColumns = []string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESSMODES", "AGE"}
 var componentStatusColumns = []string{"NAME", "STATUS", "MESSAGE", "ERROR"}
 var thirdPartyResourceColumns = []string{"NAME", "DESCRIPTION", "VERSION(S)"}
+
+// TODO: consider having 'KIND' for third party resource data
+var thirdPartyResourceDataColumns = []string{"NAME", "LABELS", "DATA"}
 var horizontalPodAutoscalerColumns = []string{"NAME", "REFERENCE", "TARGET", "CURRENT", "MINPODS", "MAXPODS", "AGE"}
 var withNamespacePrefixColumns = []string{"NAMESPACE"} // TODO(erictune): print cluster name too.
 var deploymentColumns = []string{"NAME", "DESIRED", "CURRENT", "UP-TO-DATE", "AVAILABLE", "AGE"}
@@ -438,6 +460,8 @@ func (h *HumanReadablePrinter) addDefaultHandlers() {
 	h.Handler(serviceColumns, printServiceList)
 	h.Handler(ingressColumns, printIngress)
 	h.Handler(ingressColumns, printIngressList)
+	h.Handler(petSetColumns, printPetSet)
+	h.Handler(petSetColumns, printPetSetList)
 	h.Handler(endpointColumns, printEndpoints)
 	h.Handler(endpointColumns, printEndpointsList)
 	h.Handler(nodeColumns, printNode)
@@ -470,6 +494,8 @@ func (h *HumanReadablePrinter) addDefaultHandlers() {
 	h.Handler(configMapColumns, printConfigMapList)
 	h.Handler(podSecurityPolicyColumns, printPodSecurityPolicy)
 	h.Handler(podSecurityPolicyColumns, printPodSecurityPolicyList)
+	h.Handler(thirdPartyResourceDataColumns, printThirdPartyResourceData)
+	h.Handler(thirdPartyResourceDataColumns, printThirdPartyResourceDataList)
 }
 
 func (h *HumanReadablePrinter) unknown(data []byte, w io.Writer) error {
@@ -570,7 +596,7 @@ func printPodBase(pod *api.Pod, w io.Writer, options PrintOptions) error {
 	for i := len(pod.Status.ContainerStatuses) - 1; i >= 0; i-- {
 		container := pod.Status.ContainerStatuses[i]
 
-		restarts += container.RestartCount
+		restarts += int(container.RestartCount)
 		if container.State.Waiting != nil && container.State.Waiting.Reason != "" {
 			reason = container.State.Waiting.Reason
 		} else if container.State.Terminated != nil && container.State.Terminated.Reason != "" {
@@ -770,7 +796,7 @@ func printReplicaSetList(list *extensions.ReplicaSetList, w io.Writer, options P
 	return nil
 }
 
-func printJob(job *extensions.Job, w io.Writer, options PrintOptions) error {
+func printJob(job *batch.Job, w io.Writer, options PrintOptions) error {
 	name := job.Name
 	namespace := job.Namespace
 	containers := job.Spec.Template.Spec.Containers
@@ -823,7 +849,7 @@ func printJob(job *extensions.Job, w io.Writer, options PrintOptions) error {
 	return nil
 }
 
-func printJobList(list *extensions.JobList, w io.Writer, options PrintOptions) error {
+func printJobList(list *batch.JobList, w io.Writer, options PrintOptions) error {
 	for _, job := range list.Items {
 		if err := printJob(&job, w, options); err != nil {
 			return err
@@ -855,16 +881,19 @@ func getServiceExternalIP(svc *api.Service) string {
 		if len(svc.Spec.ExternalIPs) > 0 {
 			return strings.Join(svc.Spec.ExternalIPs, ",")
 		}
-		return "nodes"
+		return "<nodes>"
 	case api.ServiceTypeLoadBalancer:
 		lbIps := loadBalancerStatusStringer(svc.Status.LoadBalancer)
 		if len(svc.Spec.ExternalIPs) > 0 {
 			result := append(strings.Split(lbIps, ","), svc.Spec.ExternalIPs...)
 			return strings.Join(result, ",")
 		}
-		return lbIps
+		if len(lbIps) > 0 {
+			return lbIps
+		}
+		return "<pending>"
 	}
-	return "unknown"
+	return "<unknown>"
 }
 
 func makePortString(ports []api.ServicePort) string {
@@ -988,6 +1017,53 @@ func printIngress(ingress *extensions.Ingress, w io.Writer, options PrintOptions
 func printIngressList(ingressList *extensions.IngressList, w io.Writer, options PrintOptions) error {
 	for _, ingress := range ingressList.Items {
 		if err := printIngress(&ingress, w, options); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printPetSet(ps *apps.PetSet, w io.Writer, options PrintOptions) error {
+	name := ps.Name
+	namespace := ps.Namespace
+	containers := ps.Spec.Template.Spec.Containers
+
+	if options.WithNamespace {
+		if _, err := fmt.Fprintf(w, "%s\t", namespace); err != nil {
+			return err
+		}
+	}
+	desiredReplicas := ps.Spec.Replicas
+	currentReplicas := ps.Status.Replicas
+	if _, err := fmt.Fprintf(w, "%s\t%d\t%d\t%s",
+		name,
+		desiredReplicas,
+		currentReplicas,
+		translateTimestamp(ps.CreationTimestamp),
+	); err != nil {
+		return err
+	}
+	if options.Wide {
+		if err := layoutContainers(containers, w); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "\t%s", unversioned.FormatLabelSelector(ps.Spec.Selector)); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprint(w, appendLabels(ps.Labels, options.ColumnLabels)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(w, appendAllLabels(options.ShowLabels, ps.Labels)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func printPetSetList(petSetList *apps.PetSetList, w io.Writer, options PrintOptions) error {
+	for _, ps := range petSetList.Items {
+		if err := printPetSet(&ps, w, options); err != nil {
 			return err
 		}
 	}
@@ -1452,7 +1528,7 @@ func printThirdPartyResource(rsrc *extensions.ThirdPartyResource, w io.Writer, o
 	versions := make([]string, len(rsrc.Versions))
 	for ix := range rsrc.Versions {
 		version := &rsrc.Versions[ix]
-		versions[ix] = fmt.Sprintf("%s/%s", version.APIGroup, version.Name)
+		versions[ix] = fmt.Sprintf("%s", version.Name)
 	}
 	versionsString := strings.Join(versions, ",")
 	if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", rsrc.Name, rsrc.Description, versionsString); err != nil {
@@ -1464,6 +1540,35 @@ func printThirdPartyResource(rsrc *extensions.ThirdPartyResource, w io.Writer, o
 func printThirdPartyResourceList(list *extensions.ThirdPartyResourceList, w io.Writer, options PrintOptions) error {
 	for _, item := range list.Items {
 		if err := printThirdPartyResource(&item, w, options); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func truncate(str string, maxLen int) string {
+	if len(str) > maxLen {
+		return str[0:maxLen] + "..."
+	}
+	return str
+}
+
+func printThirdPartyResourceData(rsrc *extensions.ThirdPartyResourceData, w io.Writer, options PrintOptions) error {
+	l := labels.FormatLabels(rsrc.Labels)
+	truncateCols := 50
+	if options.Wide {
+		truncateCols = 100
+	}
+	if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", rsrc.Name, l, truncate(string(rsrc.Data), truncateCols)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func printThirdPartyResourceDataList(list *extensions.ThirdPartyResourceDataList, w io.Writer, options PrintOptions) error {
+	for _, item := range list.Items {
+		if err := printThirdPartyResourceData(&item, w, options); err != nil {
 			return err
 		}
 	}
@@ -1584,7 +1689,7 @@ func printConfigMapList(list *api.ConfigMapList, w io.Writer, options PrintOptio
 }
 
 func printPodSecurityPolicy(item *extensions.PodSecurityPolicy, w io.Writer, options PrintOptions) error {
-	_, err := fmt.Fprintf(w, "%s\t%t\t%v\t%t\t%s\t%s\n", item.Name, item.Spec.Privileged,
+	_, err := fmt.Fprintf(w, "%s\t%t\t%v\t%v\t%s\t%s\n", item.Name, item.Spec.Privileged,
 		item.Spec.Capabilities, item.Spec.Volumes, item.Spec.SELinux.Rule,
 		item.Spec.RunAsUser.Rule)
 	return err
@@ -1683,7 +1788,7 @@ func formatWideHeaders(wide bool, t reflect.Type) []string {
 		if t.String() == "*api.ReplicationController" || t.String() == "*api.ReplicationControllerList" {
 			return []string{"CONTAINER(S)", "IMAGE(S)", "SELECTOR"}
 		}
-		if t.String() == "*extensions.Job" || t.String() == "*extensions.JobList" {
+		if t.String() == "*batch.Job" || t.String() == "*batch.JobList" {
 			return []string{"CONTAINER(S)", "IMAGE(S)", "SELECTOR"}
 		}
 		if t.String() == "*api.Service" || t.String() == "*api.ServiceList" {

@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	MasqueradeBit = 14
+	MasqueradeBit = int32(14)
 	ProxyStop     chan struct{}
 )
 
@@ -40,7 +40,7 @@ func StartProxyServer() {
 	config.Mode = componentconfig.ProxyModeUserspace
 
 	// defaults
-	oom := qos.KubeProxyOOMScoreAdj
+	oom := int32(qos.KubeProxyOOMScoreAdj)
 	config.OOMScoreAdj = &oom
 	config.IPTablesMasqueradeBit = &MasqueradeBit
 

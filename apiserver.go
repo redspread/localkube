@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/kubernetes/pkg/storage/storagebackend"
+
 	apiserver "k8s.io/kubernetes/cmd/kube-apiserver/app"
 	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
-	etcdstorage "k8s.io/kubernetes/pkg/storage/etcd"
 )
 
 const (
@@ -50,9 +51,7 @@ func StartAPIServer() {
 	config.InsecurePort = APIServerPort
 
 	// use localkube etcd
-	config.EtcdConfig = etcdstorage.EtcdConfig{
-		ServerList: KubeEtcdClientURLs,
-	}
+	config.StorageConfig = storagebackend.Config{ServerList: KubeEtcdClientURLs}
 
 	// set Service IP range
 	_, ipnet, err := net.ParseCIDR(ServiceIPRange)

@@ -360,8 +360,11 @@ func ValidateObjectMetaUpdate(newMeta, oldMeta *api.ObjectMeta, fldPath *field.P
 	}
 
 	// TODO: needs to check if newMeta==nil && oldMeta !=nil after the repair logic is removed.
-	if newMeta.DeletionGracePeriodSeconds != nil && oldMeta.DeletionGracePeriodSeconds != nil && *newMeta.DeletionGracePeriodSeconds != *oldMeta.DeletionGracePeriodSeconds {
+	if newMeta.DeletionGracePeriodSeconds != nil && (oldMeta.DeletionGracePeriodSeconds == nil || *newMeta.DeletionGracePeriodSeconds != *oldMeta.DeletionGracePeriodSeconds) {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("deletionGracePeriodSeconds"), newMeta.DeletionGracePeriodSeconds, "field is immutable; may only be changed via deletion"))
+	}
+	if newMeta.DeletionTimestamp != nil && (oldMeta.DeletionTimestamp == nil || !newMeta.DeletionTimestamp.Equal(*oldMeta.DeletionTimestamp)) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("deletionTimestamp"), newMeta.DeletionTimestamp, "field is immutable; may only be changed via deletion"))
 	}
 
 	// Reject updates that don't specify a resource version
@@ -991,10 +994,10 @@ func validateContainerPorts(ports []api.ContainerPort, fldPath *field.Path) fiel
 		}
 		if port.ContainerPort == 0 {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("containerPort"), port.ContainerPort, PortRangeErrorMsg))
-		} else if !validation.IsValidPortNum(port.ContainerPort) {
+		} else if !validation.IsValidPortNum(int(port.ContainerPort)) {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("containerPort"), port.ContainerPort, PortRangeErrorMsg))
 		}
-		if port.HostPort != 0 && !validation.IsValidPortNum(port.HostPort) {
+		if port.HostPort != 0 && !validation.IsValidPortNum(int(port.HostPort)) {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("hostPort"), port.HostPort, PortRangeErrorMsg))
 		}
 		if len(port.Protocol) == 0 {
@@ -1107,6 +1110,7 @@ func validateSecretKeySelector(s *api.SecretKeySelector, fldPath *field.Path) fi
 
 func validateVolumeMounts(mounts []api.VolumeMount, volumes sets.String, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
+	mountpoints := sets.NewString()
 
 	for i, mnt := range mounts {
 		idxPath := fldPath.Index(i)
@@ -1120,6 +1124,10 @@ func validateVolumeMounts(mounts []api.VolumeMount, volumes sets.String, fldPath
 		} else if strings.Contains(mnt.MountPath, ":") {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("mountPath"), mnt.MountPath, "must not contain ':'"))
 		}
+		if mountpoints.Has(mnt.MountPath) {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("mountPath"), mnt.MountPath, "must be unique"))
+		}
+		mountpoints.Insert(mnt.MountPath)
 	}
 	return allErrs
 }
@@ -1420,6 +1428,15 @@ func ValidatePodSpec(spec *api.PodSpec, fldPath *field.Path) field.ErrorList {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("activeDeadlineSeconds"), spec.ActiveDeadlineSeconds, "must be greater than 0"))
 		}
 	}
+
+	if len(spec.Hostname) > 0 && !validation.IsDNS1123Label(spec.Hostname) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("hostname"), spec.Hostname, DNS1123LabelErrorMsg))
+	}
+
+	if len(spec.Subdomain) > 0 && !validation.IsDNS1123Label(spec.Subdomain) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("subdomain"), spec.Subdomain, DNS1123LabelErrorMsg))
+	}
+
 	return allErrs
 }
 
@@ -1791,7 +1808,7 @@ func validateServicePort(sp *api.ServicePort, requireName, isHeadlessService boo
 		}
 	}
 
-	if !validation.IsValidPortNum(sp.Port) {
+	if !validation.IsValidPortNum(int(sp.Port)) {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("port"), sp.Port, PortRangeErrorMsg))
 	}
 
@@ -1874,7 +1891,7 @@ func ValidateNonEmptySelector(selectorMap map[string]string, fldPath *field.Path
 }
 
 // Validates the given template and ensures that it is in accordance with the desrired selector and replicas.
-func ValidatePodTemplateSpecForRC(template *api.PodTemplateSpec, selectorMap map[string]string, replicas int, fldPath *field.Path) field.ErrorList {
+func ValidatePodTemplateSpecForRC(template *api.PodTemplateSpec, selectorMap map[string]string, replicas int32, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if template == nil {
 		allErrs = append(allErrs, field.Required(fldPath, ""))
@@ -2270,7 +2287,7 @@ func ValidateSecret(secret *api.Secret) field.ErrorList {
 		if _, exists := secret.Data[api.TLSPrivateKeyKey]; !exists {
 			allErrs = append(allErrs, field.Required(dataPath.Key(api.TLSPrivateKeyKey), ""))
 		}
-		// TODO: Verify that the key matches the cert.
+	// TODO: Verify that the key matches the cert.
 	default:
 		// no-op
 	}
@@ -2584,6 +2601,9 @@ func validateEndpointSubsets(subsets []api.EndpointSubset, fldPath *field.Path) 
 		for addr := range ss.Addresses {
 			allErrs = append(allErrs, validateEndpointAddress(&ss.Addresses[addr], idxPath.Child("addresses").Index(addr))...)
 		}
+		for addr := range ss.NotReadyAddresses {
+			allErrs = append(allErrs, validateEndpointAddress(&ss.NotReadyAddresses[addr], idxPath.Child("notReadyAddresses").Index(addr))...)
+		}
 		for port := range ss.Ports {
 			allErrs = append(allErrs, validateEndpointPort(&ss.Ports[port], len(ss.Ports) > 1, idxPath.Child("ports").Index(port))...)
 		}
@@ -2594,8 +2614,13 @@ func validateEndpointSubsets(subsets []api.EndpointSubset, fldPath *field.Path) 
 
 func validateEndpointAddress(address *api.EndpointAddress, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if !validation.IsValidIPv4(address.IP) {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("ip"), address.IP, "must be a valid IPv4 address"))
+	if !validation.IsValidIP(address.IP) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("ip"), address.IP, "must be a valid IP address"))
+	}
+	if len(address.Hostname) > 0 && !validation.IsDNS1123Label(address.Hostname) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("hostname"), address.Hostname, DNS1123LabelErrorMsg))
+	}
+	if len(allErrs) > 0 {
 		return allErrs
 	}
 	return validateIpIsNotLinkLocalOrLoopback(address.IP, fldPath.Child("ip"))
@@ -2631,7 +2656,7 @@ func validateEndpointPort(port *api.EndpointPort, requireName bool, fldPath *fie
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), port.Name, DNS1123LabelErrorMsg))
 		}
 	}
-	if !validation.IsValidPortNum(port.Port) {
+	if !validation.IsValidPortNum(int(port.Port)) {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("port"), port.Port, PortRangeErrorMsg))
 	}
 	if len(port.Protocol) == 0 {

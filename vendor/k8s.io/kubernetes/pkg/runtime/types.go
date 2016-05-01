@@ -32,9 +32,13 @@ package runtime
 //
 // +protobuf=true
 type TypeMeta struct {
-	APIVersion string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
-	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	APIVersion string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty" protobuf:"bytes,1,opt,name=apiVersion"`
+	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty" protobuf:"bytes,2,opt,name=kind"`
 }
+
+const (
+	ContentTypeJSON string = "application/json"
+)
 
 // RawExtension is used to hold extensions in external versions.
 //
@@ -80,8 +84,10 @@ type TypeMeta struct {
 //
 // +protobuf=true
 type RawExtension struct {
-	// RawJSON is the underlying serialization of this object.
-	RawJSON []byte
+	// Raw is the underlying serialization of this object.
+	//
+	// TODO: Determine how to detect ContentType and ContentEncoding of 'Raw' data.
+	Raw []byte `protobuf:"bytes,1,opt,name=raw"`
 	// Object can hold a representation of this extension - useful for working with versioned
 	// structs.
 	Object Object `json:"-"`
@@ -95,11 +101,17 @@ type RawExtension struct {
 //
 // +protobuf=true
 type Unknown struct {
-	TypeMeta `json:",inline"`
-	// RawJSON will hold the complete JSON of the object which couldn't be matched
+	TypeMeta `json:",inline" protobuf:"bytes,1,opt,name=typeMeta"`
+	// Raw will hold the complete serialized object which couldn't be matched
 	// with a registered type. Most likely, nothing should be done with this
 	// except for passing it through the system.
-	RawJSON []byte
+	Raw []byte `protobuf:"bytes,2,opt,name=raw"`
+	// ContentEncoding is encoding used to encode 'Raw' data.
+	// Unspecified means no encoding.
+	ContentEncoding string `protobuf:"bytes,3,opt,name=contentEncoding"`
+	// ContentType  is serialization method used to serialize 'Raw'.
+	// Unspecified means ContentTypeJSON.
+	ContentType string `protobuf:"bytes,4,opt,name=contentType"`
 }
 
 // Unstructured allows objects that do not have Golang structs registered to be manipulated
