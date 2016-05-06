@@ -156,7 +156,7 @@ func (d *Controller) StartCtr(ctrId, etcdDataDir string) error {
 		"/sys:/sys:rw",
 		"/var/lib/docker:/var/lib/docker",
 		"/mnt/sda1/var/lib/docker:/mnt/sda1/var/lib/docker",
-		"/var/lib/kubelet:/var/lib/kubelet",
+		"/var/lib/kubelet:/var/lib/kubelet:rw,shared",
 		"/var/run:/var/run:rw",
 		"/:/rootfs:ro",
 	}
