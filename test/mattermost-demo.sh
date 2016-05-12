@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+KUBECTL_VERSION="v1.2.1"
+SPREAD_VERSION="0.1.6"
+
 NODE_IP="127.0.0.1"
 SLEEP_TIME=10
 
@@ -29,13 +32,13 @@ export PATH="$(pwd)/build:$PATH"
 
 if [ ! -f $KUBECTL ]; then
     echo "Installing kubectl..."
-    curl -o $KUBECTL https://storage.googleapis.com/kubernetes-release/release/v1.2.1/bin/linux/amd64/kubectl
+    curl -o $KUBECTL https://storage.googleapis.com/kubernetes-release/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl
     chmod +x $KUBECTL
 fi
 
 if [ ! -f $SPREAD ]; then
     echo "Installing spread..."
-    curl -o $SPREAD -L https://github.com/redspread/spread/releases/download/0.1.4/spread_linux_amd64
+    curl -o $SPREAD -L https://github.com/redspread/spread/releases/download/${SPREAD_VERSION}/spread_linux_amd64
     chmod +x $SPREAD
 fi
 
