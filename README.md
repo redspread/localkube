@@ -1,3 +1,8 @@
+# Deprecation
+**This version of localkube is deprecated.**
+
+The localkube project has been donated to be part of minikube where it is actively maintained. All new development can be found at https://github.com/kubernetes/minikube/tree/master/pkg/localkube
+
 # ⚡ localkube ⚡ 
 [![Build Status](https://travis-ci.org/redspread/localkube.svg?branch=master)](https://travis-ci.org/redspread/localkube)
 
