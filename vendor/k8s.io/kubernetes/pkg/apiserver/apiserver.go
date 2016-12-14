@@ -36,7 +36,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apiserver/metrics"
-	"k8s.io/kubernetes/pkg/healthz"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/util/flushwriter"
@@ -46,7 +45,6 @@ import (
 
 	"github.com/emicklei/go-restful"
 	"github.com/golang/glog"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func init() {
@@ -84,6 +82,8 @@ type APIGroupVersion struct {
 
 	Mapper meta.RESTMapper
 
+	// Serializer is used to determine how to convert responses from API methods into bytes to send over
+	// the wire.
 	Serializer     runtime.NegotiatedSerializer
 	ParameterCodec runtime.ParameterCodec
 
@@ -162,21 +162,21 @@ func (g *APIGroupVersion) newInstaller() *APIInstaller {
 }
 
 // TODO: document all handlers
-// InstallSupport registers the APIServer support functions
-func InstallSupport(mux Mux, ws *restful.WebService, checks ...healthz.HealthzChecker) {
-	// TODO: convert healthz and metrics to restful and remove container arg
-	healthz.InstallHandler(mux, checks...)
-	mux.Handle("/metrics", prometheus.Handler())
+// InstallVersionHandler registers the APIServer's `/version` handler
+func InstallVersionHandler(mux Mux, container *restful.Container) {
 
 	// Set up a service to return the git code version.
-	ws.Path("/version")
-	ws.Doc("git code version from which this is built")
-	ws.Route(
-		ws.GET("/").To(handleVersion).
+	versionWS := new(restful.WebService)
+	versionWS.Path("/version")
+	versionWS.Doc("git code version from which this is built")
+	versionWS.Route(
+		versionWS.GET("/").To(handleVersion).
 			Doc("get the code version").
 			Operation("getCodeVersion").
 			Produces(restful.MIME_JSON).
 			Consumes(restful.MIME_JSON))
+
+	container.Add(versionWS)
 }
 
 // InstallLogsSupport registers the APIServer log support function into a mux.
@@ -239,7 +239,8 @@ func AddApiWebService(s runtime.NegotiatedSerializer, container *restful.Contain
 		Doc("get available API versions").
 		Operation("getAPIVersions").
 		Produces(s.SupportedMediaTypes()...).
-		Consumes(s.SupportedMediaTypes()...))
+		Consumes(s.SupportedMediaTypes()...).
+		Writes(unversioned.APIVersions{}))
 	container.Add(ws)
 }
 
@@ -296,7 +297,8 @@ func AddApisWebService(s runtime.NegotiatedSerializer, container *restful.Contai
 		Doc("get available API versions").
 		Operation("getAPIVersions").
 		Produces(s.SupportedMediaTypes()...).
-		Consumes(s.SupportedMediaTypes()...))
+		Consumes(s.SupportedMediaTypes()...).
+		Writes(unversioned.APIGroupList{}))
 	container.Add(ws)
 }
 
@@ -318,7 +320,8 @@ func AddGroupWebService(s runtime.NegotiatedSerializer, container *restful.Conta
 		Doc("get information of a group").
 		Operation("getAPIGroup").
 		Produces(s.SupportedMediaTypes()...).
-		Consumes(s.SupportedMediaTypes()...))
+		Consumes(s.SupportedMediaTypes()...).
+		Writes(unversioned.APIGroup{}))
 	container.Add(ws)
 }
 
@@ -337,7 +340,8 @@ func AddSupportedResourcesWebService(s runtime.NegotiatedSerializer, ws *restful
 		Doc("get available resources").
 		Operation("getAPIResources").
 		Produces(s.SupportedMediaTypes()...).
-		Consumes(s.SupportedMediaTypes()...))
+		Consumes(s.SupportedMediaTypes()...).
+		Writes(unversioned.APIResourceList{}))
 }
 
 // handleVersion writes the server's version information.

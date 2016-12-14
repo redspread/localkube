@@ -26,7 +26,8 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 )
 
 const (
@@ -53,7 +54,7 @@ type RESTClient struct {
 	contentConfig ContentConfig
 
 	// TODO extract this into a wrapper interface via the RESTClient interface in kubectl.
-	Throttle util.RateLimiter
+	Throttle flowcontrol.RateLimiter
 
 	// Set specific behavior of the client.  If not set http.DefaultClient will be used.
 	Client *http.Client
@@ -62,7 +63,7 @@ type RESTClient struct {
 // NewRESTClient creates a new RESTClient. This client performs generic REST functions
 // such as Get, Put, Post, and Delete on specified paths.  Codec controls encoding and
 // decoding of responses from the server.
-func NewRESTClient(baseURL *url.URL, versionedAPIPath string, config ContentConfig, maxQPS float32, maxBurst int, client *http.Client) *RESTClient {
+func NewRESTClient(baseURL *url.URL, versionedAPIPath string, config ContentConfig, maxQPS float32, maxBurst int, rateLimiter flowcontrol.RateLimiter, client *http.Client) *RESTClient {
 	base := *baseURL
 	if !strings.HasSuffix(base.Path, "/") {
 		base.Path += "/"
@@ -77,9 +78,11 @@ func NewRESTClient(baseURL *url.URL, versionedAPIPath string, config ContentConf
 		config.ContentType = "application/json"
 	}
 
-	var throttle util.RateLimiter
-	if maxQPS > 0 {
-		throttle = util.NewTokenBucketRateLimiter(maxQPS, maxBurst)
+	var throttle flowcontrol.RateLimiter
+	if maxQPS > 0 && rateLimiter == nil {
+		throttle = flowcontrol.NewTokenBucketRateLimiter(maxQPS, maxBurst)
+	} else if rateLimiter != nil {
+		throttle = rateLimiter
 	}
 	return &RESTClient{
 		base:             &base,
@@ -88,6 +91,14 @@ func NewRESTClient(baseURL *url.URL, versionedAPIPath string, config ContentConf
 		Throttle:         throttle,
 		Client:           client,
 	}
+}
+
+// GetRateLimiter returns rate limier for a given client, or nil if it's called on a nil client
+func (c *RESTClient) GetRateLimiter() flowcontrol.RateLimiter {
+	if c == nil {
+		return nil
+	}
+	return c.Throttle
 }
 
 // readExpBackoffConfig handles the internal logic of determining what the
@@ -103,7 +114,7 @@ func readExpBackoffConfig() BackoffManager {
 		return &NoBackoff{}
 	}
 	return &URLBackoff{
-		Backoff: util.NewBackOff(
+		Backoff: flowcontrol.NewBackOff(
 			time.Duration(backoffBaseInt)*time.Second,
 			time.Duration(backoffDurationInt)*time.Second)}
 }
@@ -157,4 +168,8 @@ func (c *RESTClient) Delete() *Request {
 // APIVersion returns the APIVersion this RESTClient is expected to use.
 func (c *RESTClient) APIVersion() unversioned.GroupVersion {
 	return *c.contentConfig.GroupVersion
+}
+
+func (c *RESTClient) Codec() runtime.Codec {
+	return c.contentConfig.Codec
 }

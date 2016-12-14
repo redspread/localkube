@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	docker "github.com/fsouza/go-dockerclient"
+	dockertypes "github.com/docker/engine-api/types"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 )
 
@@ -32,7 +32,7 @@ const (
 )
 
 func mapState(state string) kubecontainer.ContainerState {
-	// Parse the state string in docker.APIContainers. This could break when
+	// Parse the state string in dockertypes.Container. This could break when
 	// we upgrade docker.
 	switch {
 	case strings.HasPrefix(state, statusRunningPrefix):
@@ -44,8 +44,8 @@ func mapState(state string) kubecontainer.ContainerState {
 	}
 }
 
-// Converts docker.APIContainers to kubecontainer.Container.
-func toRuntimeContainer(c *docker.APIContainers) (*kubecontainer.Container, error) {
+// Converts dockertypes.Container to kubecontainer.Container.
+func toRuntimeContainer(c *dockertypes.Container) (*kubecontainer.Container, error) {
 	if c == nil {
 		return nil, fmt.Errorf("unable to convert a nil pointer to a runtime container")
 	}
@@ -69,8 +69,8 @@ func toRuntimeContainer(c *docker.APIContainers) (*kubecontainer.Container, erro
 	}, nil
 }
 
-// Converts docker.APIImages to kubecontainer.Image.
-func toRuntimeImage(image *docker.APIImages) (*kubecontainer.Image, error) {
+// Converts dockertypes.Image to kubecontainer.Image.
+func toRuntimeImage(image *dockertypes.Image) (*kubecontainer.Image, error) {
 	if image == nil {
 		return nil, fmt.Errorf("unable to convert a nil pointer to a runtime image")
 	}

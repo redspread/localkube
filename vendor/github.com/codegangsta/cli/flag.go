@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -12,7 +13,8 @@ import (
 
 // This flag enables bash-completion for all commands and subcommands
 var BashCompletionFlag = BoolFlag{
-	Name: "generate-bash-completion",
+	Name:   "generate-bash-completion",
+	Hidden: true,
 }
 
 // This flag prints the version for the application
@@ -68,13 +70,15 @@ type GenericFlag struct {
 	Value  Generic
 	Usage  string
 	EnvVar string
+	Hidden bool
 }
 
 // String returns the string representation of the generic flag to display the
 // help text to the user (uses the String() method of the generic flag to show
 // the value)
 func (f GenericFlag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s %v\t%v", prefixedNames(f.Name), f.FormatValueHelp(), f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s %v\t%v", prefixedNames(f.Name, placeholder), f.FormatValueHelp(), usage))
 }
 
 func (f GenericFlag) FormatValueHelp() string {
@@ -137,13 +141,15 @@ type StringSliceFlag struct {
 	Value  *StringSlice
 	Usage  string
 	EnvVar string
+	Hidden bool
 }
 
 // String returns the usage
 func (f StringSliceFlag) String() string {
 	firstName := strings.Trim(strings.Split(f.Name, ",")[0], " ")
 	pref := prefixFor(firstName)
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s [%v]\t%v", prefixedNames(f.Name), pref+firstName+" option "+pref+firstName+" option", f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s [%v]\t%v", prefixedNames(f.Name, placeholder), pref+firstName+" option "+pref+firstName+" option", usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -206,13 +212,15 @@ type IntSliceFlag struct {
 	Value  *IntSlice
 	Usage  string
 	EnvVar string
+	Hidden bool
 }
 
 // String returns the usage
 func (f IntSliceFlag) String() string {
 	firstName := strings.Trim(strings.Split(f.Name, ",")[0], " ")
 	pref := prefixFor(firstName)
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s [%v]\t%v", prefixedNames(f.Name), pref+firstName+" option "+pref+firstName+" option", f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s [%v]\t%v", prefixedNames(f.Name, placeholder), pref+firstName+" option "+pref+firstName+" option", usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -253,11 +261,13 @@ type BoolFlag struct {
 	Usage       string
 	EnvVar      string
 	Destination *bool
+	Hidden      bool
 }
 
 // String returns a readable representation of this value (for usage defaults)
 func (f BoolFlag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s\t%v", prefixedNames(f.Name), f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s\t%v", prefixedNames(f.Name, placeholder), usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -296,11 +306,13 @@ type BoolTFlag struct {
 	Usage       string
 	EnvVar      string
 	Destination *bool
+	Hidden      bool
 }
 
 // String returns a readable representation of this value (for usage defaults)
 func (f BoolTFlag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s\t%v", prefixedNames(f.Name), f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s\t%v", prefixedNames(f.Name, placeholder), usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -339,11 +351,13 @@ type StringFlag struct {
 	Usage       string
 	EnvVar      string
 	Destination *string
+	Hidden      bool
 }
 
 // String returns the usage
 func (f StringFlag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s %v\t%v", prefixedNames(f.Name), f.FormatValueHelp(), f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s %v\t%v", prefixedNames(f.Name, placeholder), f.FormatValueHelp(), usage))
 }
 
 func (f StringFlag) FormatValueHelp() string {
@@ -387,11 +401,13 @@ type IntFlag struct {
 	Usage       string
 	EnvVar      string
 	Destination *int
+	Hidden      bool
 }
 
 // String returns the usage
 func (f IntFlag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s \"%v\"\t%v", prefixedNames(f.Name), f.Value, f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s \"%v\"\t%v", prefixedNames(f.Name, placeholder), f.Value, usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -430,11 +446,13 @@ type DurationFlag struct {
 	Usage       string
 	EnvVar      string
 	Destination *time.Duration
+	Hidden      bool
 }
 
 // String returns a readable representation of this value (for usage defaults)
 func (f DurationFlag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s \"%v\"\t%v", prefixedNames(f.Name), f.Value, f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s \"%v\"\t%v", prefixedNames(f.Name, placeholder), f.Value, usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -473,11 +491,13 @@ type Float64Flag struct {
 	Usage       string
 	EnvVar      string
 	Destination *float64
+	Hidden      bool
 }
 
 // String returns the usage
 func (f Float64Flag) String() string {
-	return withEnvHint(f.EnvVar, fmt.Sprintf("%s \"%v\"\t%v", prefixedNames(f.Name), f.Value, f.Usage))
+	placeholder, usage := unquoteUsage(f.Usage)
+	return withEnvHint(f.EnvVar, fmt.Sprintf("%s \"%v\"\t%v", prefixedNames(f.Name, placeholder), f.Value, usage))
 }
 
 // Apply populates the flag given the flag set and environment
@@ -507,6 +527,16 @@ func (f Float64Flag) GetName() string {
 	return f.Name
 }
 
+func visibleFlags(fl []Flag) []Flag {
+	visible := []Flag{}
+	for _, flag := range fl {
+		if !reflect.ValueOf(flag).FieldByName("Hidden").Bool() {
+			visible = append(visible, flag)
+		}
+	}
+	return visible
+}
+
 func prefixFor(name string) (prefix string) {
 	if len(name) == 1 {
 		prefix = "-"
@@ -517,16 +547,37 @@ func prefixFor(name string) (prefix string) {
 	return
 }
 
-func prefixedNames(fullName string) (prefixed string) {
+// Returns the placeholder, if any, and the unquoted usage string.
+func unquoteUsage(usage string) (string, string) {
+	for i := 0; i < len(usage); i++ {
+		if usage[i] == '`' {
+			for j := i + 1; j < len(usage); j++ {
+				if usage[j] == '`' {
+					name := usage[i+1 : j]
+					usage = usage[:i] + name + usage[j+1:]
+					return name, usage
+				}
+			}
+			break
+		}
+	}
+	return "", usage
+}
+
+func prefixedNames(fullName, placeholder string) string {
+	var prefixed string
 	parts := strings.Split(fullName, ",")
 	for i, name := range parts {
 		name = strings.Trim(name, " ")
 		prefixed += prefixFor(name) + name
+		if placeholder != "" {
+			prefixed += " " + placeholder
+		}
 		if i < len(parts)-1 {
 			prefixed += ", "
 		}
 	}
-	return
+	return prefixed
 }
 
 func withEnvHint(envVar, str string) string {

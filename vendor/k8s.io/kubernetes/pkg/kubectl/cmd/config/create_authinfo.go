@@ -29,6 +29,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/flag"
 )
 
 type createAuthInfoOptions struct {
@@ -40,7 +41,7 @@ type createAuthInfoOptions struct {
 	token             util.StringFlag
 	username          util.StringFlag
 	password          util.StringFlag
-	embedCertData     util.BoolFlag
+	embedCertData     flag.Tristate
 }
 
 var create_authinfo_long = fmt.Sprintf(`Sets a user entry in kubeconfig
@@ -90,8 +91,10 @@ func NewCmdConfigSetAuthInfo(out io.Writer, configAccess ConfigAccess) *cobra.Co
 		},
 	}
 
-	cmd.Flags().Var(&options.clientCertificate, clientcmd.FlagCertFile, "path to "+clientcmd.FlagCertFile+" for the user entry in kubeconfig")
-	cmd.Flags().Var(&options.clientKey, clientcmd.FlagKeyFile, "path to "+clientcmd.FlagKeyFile+" for the user entry in kubeconfig")
+	cmd.Flags().Var(&options.clientCertificate, clientcmd.FlagCertFile, "path to "+clientcmd.FlagCertFile+" file for the user entry in kubeconfig")
+	cmd.MarkFlagFilename(clientcmd.FlagCertFile)
+	cmd.Flags().Var(&options.clientKey, clientcmd.FlagKeyFile, "path to "+clientcmd.FlagKeyFile+" file for the user entry in kubeconfig")
+	cmd.MarkFlagFilename(clientcmd.FlagKeyFile)
 	cmd.Flags().Var(&options.token, clientcmd.FlagBearerToken, clientcmd.FlagBearerToken+" for the user entry in kubeconfig")
 	cmd.Flags().Var(&options.username, clientcmd.FlagUsername, clientcmd.FlagUsername+" for the user entry in kubeconfig")
 	cmd.Flags().Var(&options.password, clientcmd.FlagPassword, clientcmd.FlagPassword+" for the user entry in kubeconfig")

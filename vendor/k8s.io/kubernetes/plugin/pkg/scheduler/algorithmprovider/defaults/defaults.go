@@ -77,38 +77,33 @@ func init() {
 	// of already-installed packages required by the pod will be preferred over nodes with no already-installed
 	// packages required by the pod or a small total size of already-installed packages required by the pod.
 	factory.RegisterPriorityFunction("ImageLocalityPriority", priorities.ImageLocalityPriority, 1)
+	// Fit is defined based on the absence of port conflicts.
+	// This predicate is actually a default predicate, because it is invoked from
+	// predicates.GeneralPredicates()
+	factory.RegisterFitPredicate("PodFitsHostPorts", predicates.PodFitsHostPorts)
+	// Fit is determined by resource availability.
+	// This predicate is actually a default predicate, because it is invoked from
+	// predicates.GeneralPredicates()
+	factory.RegisterFitPredicate("PodFitsResources", predicates.PodFitsResources)
+	// Fit is determined by the presence of the Host parameter and a string match
+	// This predicate is actually a default predicate, because it is invoked from
+	// predicates.GeneralPredicates()
+	factory.RegisterFitPredicate("HostName", predicates.PodFitsHost)
+	// Fit is determined by node selector query.
+	factory.RegisterFitPredicate("MatchNodeSelector", predicates.PodSelectorMatches)
 }
 
 func defaultPredicates() sets.String {
 	return sets.NewString(
-		// Fit is defined based on the absence of port conflicts.
-		factory.RegisterFitPredicate("PodFitsHostPorts", predicates.PodFitsHostPorts),
-		// Fit is determined by resource availability.
-		factory.RegisterFitPredicateFactory(
-			"PodFitsResources",
-			func(args factory.PluginFactoryArgs) algorithm.FitPredicate {
-				return predicates.NewResourceFitPredicate(args.NodeInfo)
-			},
-		),
 		// Fit is determined by non-conflicting disk volumes.
 		factory.RegisterFitPredicate("NoDiskConflict", predicates.NoDiskConflict),
 		// Fit is determined by volume zone requirements.
 		factory.RegisterFitPredicateFactory(
 			"NoVolumeZoneConflict",
 			func(args factory.PluginFactoryArgs) algorithm.FitPredicate {
-				return predicates.NewVolumeZonePredicate(args.NodeInfo, args.PVInfo, args.PVCInfo)
+				return predicates.NewVolumeZonePredicate(args.PVInfo, args.PVCInfo)
 			},
 		),
-		// Fit is determined by node selector query.
-		factory.RegisterFitPredicateFactory(
-			"MatchNodeSelector",
-			func(args factory.PluginFactoryArgs) algorithm.FitPredicate {
-				return predicates.NewSelectorMatchPredicate(args.NodeInfo)
-			},
-		),
-		// Fit is determined by the presence of the Host parameter and a string match
-		factory.RegisterFitPredicate("HostName", predicates.PodFitsHost),
-
 		// Fit is determined by whether or not there would be too many AWS EBS volumes attached to the node
 		factory.RegisterFitPredicateFactory(
 			"MaxEBSVolumeCount",
@@ -118,7 +113,6 @@ func defaultPredicates() sets.String {
 				return predicates.NewMaxPDVolumeCountPredicate(predicates.EBSVolumeFilter, maxVols, args.PVInfo, args.PVCInfo)
 			},
 		),
-
 		// Fit is determined by whether or not there would be too many GCE PD volumes attached to the node
 		factory.RegisterFitPredicateFactory(
 			"MaxGCEPDVolumeCount",
@@ -128,6 +122,9 @@ func defaultPredicates() sets.String {
 				return predicates.NewMaxPDVolumeCountPredicate(predicates.GCEPDVolumeFilter, maxVols, args.PVInfo, args.PVCInfo)
 			},
 		),
+		// GeneralPredicates are the predicates that are enforced by all Kubernetes components
+		// (e.g. kubelet and all schedulers)
+		factory.RegisterFitPredicate("GeneralPredicates", predicates.GeneralPredicates),
 	)
 }
 

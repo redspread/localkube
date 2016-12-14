@@ -86,7 +86,7 @@ func New(kubeConfigFile string) (*WebhookAuthorizer, error) {
 		return nil, err
 	}
 	serializer := json.NewSerializer(json.DefaultMetaFactory, api.Scheme, runtime.ObjectTyperToTyper(api.Scheme), false)
-	clientConfig.ContentConfig.Codec = versioning.NewCodecForScheme(api.Scheme, serializer, encodeVersions, decodeVersions)
+	clientConfig.ContentConfig.Codec = versioning.NewCodecForScheme(api.Scheme, serializer, serializer, encodeVersions, decodeVersions)
 
 	restClient, err := restclient.UnversionedRESTClientFor(clientConfig)
 	if err != nil {
@@ -151,10 +151,13 @@ func (w *WebhookAuthorizer) Authorize(attr authorizer.Attributes) (err error) {
 	}
 	if attr.IsResourceRequest() {
 		r.Spec.ResourceAttributes = &v1beta1.ResourceAttributes{
-			Namespace: attr.GetNamespace(),
-			Verb:      attr.GetVerb(),
-			Group:     attr.GetAPIGroup(),
-			Resource:  attr.GetResource(),
+			Namespace:   attr.GetNamespace(),
+			Verb:        attr.GetVerb(),
+			Group:       attr.GetAPIGroup(),
+			Version:     attr.GetAPIVersion(),
+			Resource:    attr.GetResource(),
+			Subresource: attr.GetSubresource(),
+			Name:        attr.GetName(),
 		}
 	} else {
 		r.Spec.NonResourceAttributes = &v1beta1.NonResourceAttributes{

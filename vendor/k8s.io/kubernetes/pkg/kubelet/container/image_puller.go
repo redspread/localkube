@@ -22,7 +22,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/record"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 )
 
 // imagePuller pulls the image using Runtime.PullImage().
@@ -31,7 +31,7 @@ import (
 type imagePuller struct {
 	recorder record.EventRecorder
 	runtime  Runtime
-	backOff  *util.Backoff
+	backOff  *flowcontrol.Backoff
 }
 
 // enforce compatibility.
@@ -39,7 +39,7 @@ var _ ImagePuller = &imagePuller{}
 
 // NewImagePuller takes an event recorder and container runtime to create a
 // image puller that wraps the container runtime's PullImage interface.
-func NewImagePuller(recorder record.EventRecorder, runtime Runtime, imageBackOff *util.Backoff) ImagePuller {
+func NewImagePuller(recorder record.EventRecorder, runtime Runtime, imageBackOff *flowcontrol.Backoff) ImagePuller {
 	return &imagePuller{
 		recorder: recorder,
 		runtime:  runtime,
@@ -110,7 +110,7 @@ func (puller *imagePuller) PullImage(pod *api.Pod, container *api.Container, pul
 		puller.logIt(ref, api.EventTypeWarning, "Failed", logPrefix, fmt.Sprintf("Failed to pull image %q: %v", container.Image, err), glog.Warning)
 		puller.backOff.Next(backOffKey, puller.backOff.Clock.Now())
 		if err == RegistryUnavailable {
-			msg := fmt.Sprintf("image pull failed for %s because the registry is temporarily unavailable.", container.Image)
+			msg := fmt.Sprintf("image pull failed for %s because the registry is unavailable.", container.Image)
 			return err, msg
 		} else {
 			return ErrImagePull, err.Error()

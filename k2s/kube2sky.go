@@ -20,7 +20,11 @@ limitations under the License.
 // kube2sky is a bridge between Kubernetes and SkyDNS.  It watches the
 // Kubernetes master for changes in Services and manifests them into etcd for
 // SkyDNS to serve as DNS records.
+
+//START REDSPREAD CHANGES
 package lib
+
+//END REDSPREAD CHANGES
 
 import (
 	"encoding/json"
@@ -29,8 +33,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	etcd "github.com/coreos/go-etcd/etcd"
@@ -176,28 +182,27 @@ func getSkyMsg(ip string, port int) *skymsg.Service {
 }
 
 func (ks *kube2sky) generateRecordsForHeadlessService(subdomain string, e *kapi.Endpoints, svc *kapi.Service) error {
-	glog.V(4).Infof("Endpoints Annotations: %v", e.Annotations)
+	// TODO: remove this after v1.4 is released and the old annotations are EOL
+	podHostnames, err := getPodHostnamesFromAnnotation(e.Annotations)
+	if err != nil {
+		return err
+	}
 	for idx := range e.Subsets {
 		for subIdx := range e.Subsets[idx].Addresses {
-			endpointIP := e.Subsets[idx].Addresses[subIdx].IP
+			address := &e.Subsets[idx].Addresses[subIdx]
+			endpointIP := address.IP
 			b, err := json.Marshal(getSkyMsg(endpointIP, 0))
 			if err != nil {
 				return err
 			}
 			recordValue := string(b)
-			recordLabel := getHash(recordValue)
-			if serializedPodHostnames := e.Annotations[endpoints.PodHostnamesAnnotation]; len(serializedPodHostnames) > 0 {
-				podHostnames := map[string]endpoints.HostRecord{}
-				err := json.Unmarshal([]byte(serializedPodHostnames), &podHostnames)
-				if err != nil {
-					return err
-				}
-				if hostRecord, exists := podHostnames[string(endpointIP)]; exists {
-					if validation.IsDNS1123Label(hostRecord.HostName) {
-						recordLabel = hostRecord.HostName
-					}
-				}
+			var recordLabel string
+			if hostLabel, exists := getHostname(address, podHostnames); exists {
+				recordLabel = hostLabel
+			} else {
+				recordLabel = getHash(recordValue)
 			}
+
 			recordKey := buildDNSNameString(subdomain, recordLabel)
 
 			glog.V(2).Infof("Setting DNS record: %v -> %q\n", recordKey, recordValue)
@@ -208,7 +213,7 @@ func (ks *kube2sky) generateRecordsForHeadlessService(subdomain string, e *kapi.
 				endpointPort := &e.Subsets[idx].Ports[portIdx]
 				portSegment := buildPortSegmentString(endpointPort.Name, endpointPort.Protocol)
 				if portSegment != "" {
-					err := ks.generateSRVRecord(subdomain, portSegment, recordLabel, recordKey, endpointPort.Port)
+					err := ks.generateSRVRecord(subdomain, portSegment, recordLabel, recordKey, int(endpointPort.Port))
 					if err != nil {
 						return err
 					}
@@ -218,6 +223,30 @@ func (ks *kube2sky) generateRecordsForHeadlessService(subdomain string, e *kapi.
 	}
 
 	return nil
+}
+
+func getHostname(address *kapi.EndpointAddress, podHostnames map[string]endpoints.HostRecord) (string, bool) {
+	if len(address.Hostname) > 0 {
+		return address.Hostname, true
+	}
+	if hostRecord, exists := podHostnames[address.IP]; exists && validation.IsDNS1123Label(hostRecord.HostName) {
+		return hostRecord.HostName, true
+	}
+	return "", false
+}
+
+func getPodHostnamesFromAnnotation(annotations map[string]string) (map[string]endpoints.HostRecord, error) {
+	hostnames := map[string]endpoints.HostRecord{}
+
+	if annotations != nil {
+		if serializedHostnames, exists := annotations[endpoints.PodHostnamesAnnotation]; exists && len(serializedHostnames) > 0 {
+			err := json.Unmarshal([]byte(serializedHostnames), &hostnames)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return hostnames, nil
 }
 
 func (ks *kube2sky) getServiceFromEndpoints(e *kapi.Endpoints) (*kapi.Service, error) {
@@ -335,7 +364,7 @@ func (ks *kube2sky) generateRecordsForPortalService(subdomain string, service *k
 		port := &service.Spec.Ports[i]
 		portSegment := buildPortSegmentString(port.Name, port.Protocol)
 		if portSegment != "" {
-			err = ks.generateSRVRecord(subdomain, portSegment, recordLabel, subdomain, port.Port)
+			err = ks.generateSRVRecord(subdomain, portSegment, recordLabel, subdomain, int(port.Port))
 			if err != nil {
 				return err
 			}
@@ -392,7 +421,7 @@ func (ks *kube2sky) mutateEtcdOrDie(mutator func() error) {
 	for {
 		select {
 		case <-timeout:
-			glog.Fatalf("Failed to mutate etcd for %v using mutator: %v", ks.etcdMutationTimeout, mutator)
+			glog.Fatalf("Failed to mutate etcd for %v using mutator: %v", ks.etcdMutationTimeout, mutator())
 		default:
 			if err := mutator(); err != nil {
 				delay := 50 * time.Millisecond
@@ -623,6 +652,22 @@ func waitForKubernetesService(client *kclient.Client) (svc *kapi.Service) {
 		break
 	}
 	return
+}
+
+// setupSignalHandlers runs a goroutine that waits on SIGINT or SIGTERM and logs it
+// before exiting.
+func setupSignalHandlers() {
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// This program should always exit gracefully logging that it received
+	// either a SIGINT or SIGTERM. Since kube2sky is run in a container
+	// without a liveness probe as part of the kube-dns pod, it shouldn't
+	// restart unless the pod is deleted. If it restarts without logging
+	// anything it means something is seriously wrong.
+	// TODO: Remove once #22290 is fixed.
+	go func() {
+		glog.Fatalf("Received signal %s", <-sigChan)
+	}()
 }
 
 // setupHealthzHandlers sets up a readiness and liveness endpoint for kube2sky.
