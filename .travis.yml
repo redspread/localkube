@@ -23,7 +23,6 @@ before_script:
 
 script:
   - make build
-  - make integration
 
 after_success:
   # If release then build + push image, if not just build
